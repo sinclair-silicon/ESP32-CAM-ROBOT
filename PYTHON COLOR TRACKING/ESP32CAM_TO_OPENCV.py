@@ -17,8 +17,9 @@ except serial.SerialException:
     ser = None
 
 # --- NEW: Servo Tracking Variables ---
-pan_angle = 90.0  # Start looking straight ahead
-Kp_pan = 0.05     # Proportional Gain
+dead_zone = 40
+pan_angle = 40.0  # Start looking straight ahead
+Kp_pan = 1.2     # Proportional Gain
 
 while True:
     ret, frame = cap.read()
@@ -58,22 +59,43 @@ while True:
             x, y, w, h = cv2.boundingRect(c)
             center_x = x + (w // 2)
             
-            # --- Proportional Controller Math ---
+            # 1. Calculate Error (Frame is 480 wide, so center is 240)
             error_x = center_x - 240
-            adjustment = error_x * Kp_pan
-            pan_angle = pan_angle - adjustment
             
-            # Clamp the angle to protect the physical servo (0 to 180 degrees)
-            pan_angle = max(0, min(180, pan_angle))
+            # 3. The Proportional Logic
+            if abs(error_x) <= dead_zone:
+                # Ball is centered. Drive straight.
+                command = "F:150"  # We will format this so Arduino can read it
+                print(f"Target Locked. Driving Forward. (Error: {error_x})")
+                
+            else:
+                # Ball is outside dead zone. Calculate turn speed.
+                # Use abs() because we only want a positive speed value (0 to 255)
+                adjustment_speed = int(abs(error_x) * Kp_pan)
+                
+                # Clamp speed between 80 (to overcome motor friction) and 255 (max speed)
+                pwm_val = max(80, min(255, adjustment_speed))
+                
+                if error_x > 0:
+                    # Ball is on the right, so we need to turn Right
+                    command = f"L:{pwm_val}"
+                    print(f"Tracking Left. PWM: {pwm_val} (Error: {error_x})")
+                else:
+                    # Ball is on the left, so we need to turn Left
+                    command = f"R:{pwm_val}"
+                    print(f"Tracking Right. PWM: {pwm_val} (Error: {error_x})")
+            
+            # 4. Send the command to Arduino (assuming you have a serial object named 'ser')
             
             # --- Serial Transmission to Arduino ---
             if ser is not None:
-                data_string = f"{int(pan_angle)}\n"
+                data_string = f"{command}\n"
                 ser.write(data_string.encode('utf-8'))
             
             # Draw visuals
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(frame, f"Angle: {int(pan_angle)}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(frame, f"Cmd: {command}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            # print(frame.shape)
 
     # Show results
     cv2.imshow("Red Ball Tracking", frame)

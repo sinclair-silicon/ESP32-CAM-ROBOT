@@ -45,6 +45,19 @@ void stopRobot() {
 }
 
 void moveForward() {
+  // activating all the motors and getting ready for directions
   analogWrite(leftDrive.enablePin, 255);
   analogWrite(rightDrive.enablePin, 255);
+
+  // now setting the directions of the motors
+  // We loop by 2 because we are setting pairs of pins (IN1 & IN2, then IN3 & IN4)
+  for (int i = 0; i < 4; i += 2) {
+    // LEFT SIDE MOTORS: Normal physical orientation
+    digitalWrite(leftDrive.directionPins[i], HIGH);
+    digitalWrite(leftDrive.directionPins[i + 1], LOW);
+
+    // RIGHT SIDE MOTORS: Mirrored physical orientation (The flip!)
+    digitalWrite(rightDrive.directionPins[i], LOW);
+    digitalWrite(rightDrive.directionPins[i + 1], HIGH);
+  }
 }
