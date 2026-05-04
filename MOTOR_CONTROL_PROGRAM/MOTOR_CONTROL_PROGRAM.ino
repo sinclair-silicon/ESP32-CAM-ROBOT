@@ -1,63 +1,124 @@
 struct LEFTMOTORS {
-  //front left motors
-  int directionPins[4] = { 2, 3, 4, 5 };  // inputs 1 - 4 of left side of both l293d
-  int enablePin = 6;                      // enable pin of left motors
+  int directionPins[4] = { 2, 3, 4, 5 };
+  int enablePin = 6;
 };
 
 struct RIGHTMOTORS {
-  //front right motors
-  int directionPins[4] = { A0, A1, A2, A3 };  // inputs 1 - 4 of right side of both l293d
-  int enablePin = 9;                          // enable pin of right motors
+  int directionPins[4] = { A0, A1, A2, A3 };
+  int enablePin = 9;
 };
 
-// object created from both structures
 LEFTMOTORS leftDrive;
 RIGHTMOTORS rightDrive;
 
+// New global variable to hold incoming serial data
+String inputString = "";
+bool stringComplete = false;
+
 void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(115200);  //initializing serial comm
+  Serial.begin(115200);
 
-  // looping through all the left motors pins and setting them as OUTPUT
-  for (int pin = 0; pin < sizeof(leftDrive.directionPins) / sizeof(leftDrive.directionPins[0]); pin++) {
+  for (int pin = 0; pin < 4; pin++) {
     pinMode(leftDrive.directionPins[pin], OUTPUT);
-  }
-
-  // looping through all the right motors pins and setting them as OUTPUT
-  for (int pin = 0; pin < sizeof(rightDrive.directionPins) / sizeof(rightDrive.directionPins[0]); pin++) {
     pinMode(rightDrive.directionPins[pin], OUTPUT);
   }
 
-  // setting the enable pins as OUTPUT
   pinMode(leftDrive.enablePin, OUTPUT);
   pinMode(rightDrive.enablePin, OUTPUT);
 
-  stopRobot();  // deactivating the motors
+  // Reserve 50 bytes for the input string to prevent memory fragmentation
+  inputString.reserve(50);
+
+  stopRobot();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  // 1. Check if we received a complete command string
+  if (stringComplete) {
+
+    // 2. Parse the string (Expected format: "R:200" or "F:150")
+    int colonIndex = inputString.indexOf(':');
+
+    if (colonIndex != -1) {
+      // Extract the direction character ('R', 'L', 'F')
+      String directionStr = inputString.substring(0, colonIndex);
+      // Extract the speed number and convert it to an integer
+      int speed = inputString.substring(colonIndex + 1).toInt();
+
+      // Ensure speed is within safe bounds
+      speed = constrain(speed, 0, 255);
+
+      // 3. Execute the command
+      if (directionStr == "F") {
+        moveForward(speed);
+      } else if (directionStr == "L") {
+        turnLeft(speed);
+      } else if (directionStr == "R") {
+        turnRight(speed);
+      }
+    }
+
+    // 4. Clear the string for the next command
+    inputString = "";
+    stringComplete = false;
+  }
 }
+
+// Built-in Arduino function that automatically grabs incoming serial characters
+void serialEvent() {
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    inputString += inChar;
+    // If the incoming character is a newline, set a flag so the main loop can process it
+    if (inChar == '\n') {
+      stringComplete = true;
+    }
+  }
+}
+
+// --- MOVEMENT FUNCTIONS ---
 
 void stopRobot() {
   analogWrite(leftDrive.enablePin, 0);
   analogWrite(rightDrive.enablePin, 0);
 }
 
-void moveForward() {
-  // activating all the motors and getting ready for directions
-  analogWrite(leftDrive.enablePin, 255);
-  analogWrite(rightDrive.enablePin, 255);
+void moveForward(int speed) {
+  analogWrite(leftDrive.enablePin, speed);
+  analogWrite(rightDrive.enablePin, speed);
 
-  // now setting the directions of the motors
-  // We loop by 2 because we are setting pairs of pins (IN1 & IN2, then IN3 & IN4)
   for (int i = 0; i < 4; i += 2) {
-    // LEFT SIDE MOTORS: Normal physical orientation
+    digitalWrite(leftDrive.directionPins[i], HIGH);
+    digitalWrite(leftDrive.directionPins[i + 1], LOW);
+    digitalWrite(rightDrive.directionPins[i], LOW);
+    digitalWrite(rightDrive.directionPins[i + 1], HIGH);
+  }
+}
+
+void turnLeft(int speed) {
+  // Skid steer: Left side backwards, Right side forwards
+  analogWrite(leftDrive.enablePin, speed);
+  analogWrite(rightDrive.enablePin, speed);
+
+  for (int i = 0; i < 4; i += 2) {
+    digitalWrite(leftDrive.directionPins[i], LOW);
+    digitalWrite(leftDrive.directionPins[i + 1], HIGH);
+
+    digitalWrite(rightDrive.directionPins[i], LOW);
+    digitalWrite(rightDrive.directionPins[i + 1], HIGH);
+  }
+}
+
+void turnRight(int speed) {
+  // Skid steer: Left side forwards, Right side backwards
+  analogWrite(leftDrive.enablePin, speed);
+  analogWrite(rightDrive.enablePin, speed);
+
+  for (int i = 0; i < 4; i += 2) {
     digitalWrite(leftDrive.directionPins[i], HIGH);
     digitalWrite(leftDrive.directionPins[i + 1], LOW);
 
-    // RIGHT SIDE MOTORS: Mirrored physical orientation (The flip!)
-    digitalWrite(rightDrive.directionPins[i], LOW);
-    digitalWrite(rightDrive.directionPins[i + 1], HIGH);
+    digitalWrite(rightDrive.directionPins[i], HIGH);
+    digitalWrite(rightDrive.directionPins[i + 1], LOW);
   }
 }
